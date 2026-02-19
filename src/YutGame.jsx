@@ -5,6 +5,7 @@ const WAITING = -1
 const START_FINISH_POS = 0
 const DO_POS = 1
 const OUT_POS = 30
+
 const TEAM_COLORS = ['#ef4444', '#3b82f6', '#22c55e', '#f59e0b']
 const TEAM_BG = ['bg-rose-500/15', 'bg-blue-500/15', 'bg-green-500/15', 'bg-amber-500/15']
 const TEAM_TEXT = ['text-rose-300', 'text-blue-300', 'text-green-300', 'text-amber-300']
@@ -95,7 +96,6 @@ function YutGame() {
   const [turnActive, setTurnActive] = useState(false)
 
   const yutMoLimit = settings.mode === 'basic' ? 1 : 3
-
   const activeTeamName = settings.teamNames[currentTeam]
 
   const pieceMap = useMemo(() => {
@@ -154,7 +154,8 @@ function YutGame() {
     return defaultNext(pos)
   }
 
-  const teamFinished = (team) => pieces.filter((p) => p.team === team && p.pos === OUT_POS).length === settings.numPieces
+  const teamFinished = (team) =>
+    pieces.filter((p) => p.team === team && p.pos === OUT_POS).length === settings.numPieces
 
   const moveToNextTeam = () => {
     let step = 1
@@ -179,6 +180,7 @@ function YutGame() {
 
   const addMoveResult = (move) => {
     if (!started || routeChoice) return
+
     if (move.label === '낙') {
       setPendingMoves([])
       setExtraCaptureAvailable(0)
@@ -188,8 +190,11 @@ function YutGame() {
       return
     }
 
+    // 옵션: 보드 위 말이 하나도 없을 때 빽도는 낙 처리
     if (move.label === '빽도') {
-      const currentTeamBoardPieces = pieces.filter((p) => p.team === currentTeam && p.pos >= 0 && p.pos !== OUT_POS)
+      const currentTeamBoardPieces = pieces.filter(
+        (p) => p.team === currentTeam && p.pos >= 0 && p.pos !== OUT_POS
+      )
       if (currentTeamBoardPieces.length === 0) {
         setPendingMoves([])
         setExtraCaptureAvailable(0)
@@ -208,10 +213,6 @@ function YutGame() {
       setMessage(`${move.label}! 추가 던지기 권리 +1`)
     } else {
       setMessage(`${move.label} 입력됨. 말을 선택 후 이동 실행하세요.`)
-    }
-
-    if (extraThrowsToUse > 0 && pendingMoves.length === 0) {
-      setExtraThrowsToUse((v) => Math.max(0, v - 1))
     }
   }
 
@@ -237,6 +238,7 @@ function YutGame() {
         ? pieces.filter((p) => p.team === currentTeam && p.pos === selected.pos).map((p) => p.id)
         : [selected.id]
 
+    // 빽도
     if (move.steps < 0) {
       const target = resolveBackDoTarget(selected)
       if (target === WAITING && selected.pos === WAITING) {
@@ -362,6 +364,7 @@ function YutGame() {
     }
   }
 
+  // 턴 전환: 이동이 "한 번이라도" 적용된 뒤에만 다음 팀으로 넘김
   useEffect(() => {
     if (!started) return
     if (pendingMoves.length > 0 || routeChoice) return
@@ -400,6 +403,7 @@ function YutGame() {
     setMessage('마지막 이동 1회를 되돌렸습니다. (던진 결과 복원 없음)')
   }
 
+  // 키보드 핸들러(중복 등록 방지)
   const keyboardActionsRef = useRef({
     addMoveResult: () => {},
     undoLastMove: () => {},
@@ -414,13 +418,14 @@ function YutGame() {
       applyMove,
       hasRouteChoice: Boolean(routeChoice),
     }
-  }, [addMoveResult, undoLastMove, applyMove, routeChoice])
+  }, [routeChoice, pendingMoves, pieces, currentTeam, selectedPieceId, extraFromYutMoUsed, extraThrowsToUse])
 
   useEffect(() => {
     const handle = (e) => {
       const key = e.key.toLowerCase()
       const { addMoveResult: addMove, undoLastMove: undoMove, applyMove: doApplyMove, hasRouteChoice } =
         keyboardActionsRef.current
+
       const found = moveDefs.find((m) => m.key === key)
       if (found) {
         e.preventDefault()
@@ -462,9 +467,7 @@ function YutGame() {
           <h1 className="flex items-center gap-2 text-2xl font-bold">
             <Flag className="h-6 w-6 text-emerald-300" /> 실물 윷 입력 기반 윷놀이 진행 보드
           </h1>
-          <p className="mt-2 text-sm text-slate-300">
-            단축키: 1/2/3/4/5, B(빽도), O(낙), U(Undo), Enter(이동 실행)
-          </p>
+          <p className="mt-2 text-sm text-slate-300">단축키: 1/2/3/4/5, B(빽도), O(낙), U(Undo), Enter(이동 실행)</p>
         </header>
 
         {!started ? (
@@ -566,8 +569,20 @@ function YutGame() {
 
                 {BOARD_NODES.map((pos) => (
                   <g key={pos}>
-                    <circle cx={nodeCoords[pos][0]} cy={nodeCoords[pos][1]} r="2.7" fill="#fef3c7" stroke="#a16207" />
-                    <text x={nodeCoords[pos][0]} y={nodeCoords[pos][1] + 0.9} textAnchor="middle" className="fill-slate-900 text-[2.4px] font-bold">
+                    <circle
+                      cx={nodeCoords[pos][0]}
+                      cy={nodeCoords[pos][1]}
+                      r={pos === CENTER_POS ? '3.4' : '2.7'}
+                      fill="#fef3c7"
+                      stroke="#a16207"
+                      strokeWidth={pos === CENTER_POS ? '1.2' : '1'}
+                    />
+                    <text
+                      x={nodeCoords[pos][0]}
+                      y={nodeCoords[pos][1] + 0.9}
+                      textAnchor="middle"
+                      className="fill-slate-900 text-[2.4px] font-bold"
+                    >
                       {pos}
                     </text>
                   </g>
@@ -623,7 +638,10 @@ function YutGame() {
                 </div>
 
                 <div className="mt-3 rounded-lg bg-slate-950/70 p-2 text-xs text-slate-300">
-                  대기 결과 큐: {pendingMoves.length ? pendingMoves.map((m, i) => <span key={`${m.label}-${i}`}>[{m.label}] </span>) : '없음'}
+                  대기 결과 큐:{' '}
+                  {pendingMoves.length
+                    ? pendingMoves.map((m, i) => <span key={`${m.label}-${i}`}>[{m.label}] </span>)
+                    : '없음'}
                 </div>
 
                 <div className="mt-2 grid grid-cols-2 gap-2">
@@ -688,7 +706,11 @@ function YutGame() {
                         <div className="mt-1 flex items-center gap-1">
                           <CircleOff className="h-3.5 w-3.5 text-slate-400" /> OUT ({outPieces.length})
                           {outPieces.map((p) => (
-                            <span key={p.id} className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: TEAM_COLORS[team] }} />
+                            <span
+                              key={p.id}
+                              className="inline-block h-2.5 w-2.5 rounded-full"
+                              style={{ background: TEAM_COLORS[team] }}
+                            />
                           ))}
                         </div>
                       </div>
