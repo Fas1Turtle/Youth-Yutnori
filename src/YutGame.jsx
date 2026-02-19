@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Flag, Undo2, Users, Dices, SkipForward, CircleOff } from 'lucide-react'
 
 const WAITING = -1
 const START_FINISH_POS = 0
 const DO_POS = 1
 const OUT_POS = 30
+
 const TEAM_COLORS = ['#ef4444', '#3b82f6', '#22c55e', '#f59e0b']
 const TEAM_BG = ['bg-rose-500/15', 'bg-blue-500/15', 'bg-green-500/15', 'bg-amber-500/15']
 const TEAM_TEXT = ['text-rose-300', 'text-blue-300', 'text-green-300', 'text-amber-300']
@@ -12,7 +13,7 @@ const TEAM_TEXT = ['text-rose-300', 'text-blue-300', 'text-green-300', 'text-amb
 const OUTER_NODES = Array.from({ length: 20 }, (_, i) => i)
 const DIAGONAL_NODES = Array.from({ length: 8 }, (_, i) => i + 20)
 const CENTER_POS = 28
-const BOARD_NODES = [...OUTER_NODES, ...DIAGONAL_NODES]
+const BOARD_NODES = [...OUTER_NODES, ...DIAGONAL_NODES, CENTER_POS]
 
 const nodeCoords = {
   0: [94, 94],
@@ -62,6 +63,8 @@ const diagonalLines = [
   [27, 0],
 ]
 
+const deepClone = (value) => JSON.parse(JSON.stringify(value))
+
 const moveDefs = [
   { label: '도', steps: 1, key: '1' },
   { label: '개', steps: 2, key: '2' },
@@ -90,9 +93,9 @@ function YutGame() {
   const [message, setMessage] = useState('게임을 시작하세요.')
   const [routeChoice, setRouteChoice] = useState(null)
   const [undoSnapshot, setUndoSnapshot] = useState(null)
+  const [turnActive, setTurnActive] = useState(false)
 
   const yutMoLimit = settings.mode === 'basic' ? 1 : 3
-
   const activeTeamName = settings.teamNames[currentTeam]
 
   const pieceMap = useMemo(() => {
@@ -124,6 +127,7 @@ function YutGame() {
     setMessage('실물 윷을 던지고 결과를 입력하세요.')
     setRouteChoice(null)
     setUndoSnapshot(null)
+    setTurnActive(false)
     setStarted(true)
   }
 
@@ -150,7 +154,8 @@ function YutGame() {
     return defaultNext(pos)
   }
 
-  const teamFinished = (team) => pieces.filter((p) => p.team === team && p.pos === OUT_POS).length === settings.numPieces
+  const teamFinished = (team) =>
+    pieces.filter((p) => p.team === team && p.pos === OUT_POS).length === settings.numPieces
 
   const moveToNextTeam = () => {
     let step = 1
@@ -164,6 +169,7 @@ function YutGame() {
         setExtraCaptureAvailable(0)
         setExtraThrowsToUse(0)
         setUndoSnapshot(null)
+        setTurnActive(false)
         setMessage(`${settings.teamNames[team]} 차례입니다. 결과를 입력하세요.`)
         return
       }
@@ -174,6 +180,7 @@ function YutGame() {
 
   const addMoveResult = (move) => {
     if (!started || routeChoice) return
+
     if (move.label === '낙') {
       setPendingMoves([])
       setExtraCaptureAvailable(0)
@@ -181,6 +188,21 @@ function YutGame() {
       setMessage('낙! 이번 차례는 즉시 종료됩니다.')
       moveToNextTeam()
       return
+    }
+
+    // 옵션: 보드 위 말이 하나도 없을 때 빽도는 낙 처리
+    if (move.label === '빽도') {
+      const currentTeamBoardPieces = pieces.filter(
+        (p) => p.team === currentTeam && p.pos >= 0 && p.pos !== OUT_POS
+      )
+      if (currentTeamBoardPieces.length === 0) {
+        setPendingMoves([])
+        setExtraCaptureAvailable(0)
+        setExtraThrowsToUse(0)
+        setMessage('빽도이지만 보드 위 말이 없어 낙 처리됩니다. 턴 종료!')
+        moveToNextTeam()
+        return
+      }
     }
 
     setPendingMoves((prev) => [...prev, { label: move.label, steps: move.steps, source: 'yut' }])
@@ -191,10 +213,6 @@ function YutGame() {
       setMessage(`${move.label}! 추가 던지기 권리 +1`)
     } else {
       setMessage(`${move.label} 입력됨. 말을 선택 후 이동 실행하세요.`)
-    }
-
-    if (extraThrowsToUse > 0 && pendingMoves.length === 0) {
-      setExtraThrowsToUse((v) => Math.max(0, v - 1))
     }
   }
 
@@ -220,6 +238,7 @@ function YutGame() {
         ? pieces.filter((p) => p.team === currentTeam && p.pos === selected.pos).map((p) => p.id)
         : [selected.id]
 
+    // 빽도
     if (move.steps < 0) {
       const target = resolveBackDoTarget(selected)
       if (target === WAITING && selected.pos === WAITING) {
@@ -228,7 +247,7 @@ function YutGame() {
       }
 
       const snapshot = {
-        pieces: structuredClone(pieces),
+        pieces: deepClone(pieces),
         selectedPieceId,
         extraCaptureAvailable,
         extraThrowsToUse,
@@ -251,6 +270,7 @@ function YutGame() {
       setUndoSnapshot(snapshot)
       setPieces(nextPieces)
       setPendingMoves((prev) => prev.slice(1))
+      setTurnActive(true)
 
       if (didCapture) {
         setExtraCaptureAvailable((v) => v + 1)
@@ -285,7 +305,7 @@ function YutGame() {
     }
 
     const snapshot = {
-      pieces: structuredClone(pieces),
+      pieces: deepClone(pieces),
       selectedPieceId,
       extraCaptureAvailable,
       extraThrowsToUse,
@@ -331,6 +351,7 @@ function YutGame() {
     setPieces(nextPieces)
     setPendingMoves((prev) => prev.slice(1))
     setRouteChoice(null)
+    setTurnActive(true)
 
     if (didCapture) {
       setExtraCaptureAvailable((v) => v + 1)
@@ -343,6 +364,7 @@ function YutGame() {
     }
   }
 
+  // 턴 전환: 이동이 "한 번이라도" 적용된 뒤에만 다음 팀으로 넘김
   useEffect(() => {
     if (!started) return
     if (pendingMoves.length > 0 || routeChoice) return
@@ -358,11 +380,14 @@ function YutGame() {
       return
     }
 
+    if (!turnActive) return
+
     const id = setTimeout(() => {
       moveToNextTeam()
+      setTurnActive(false)
     }, 120)
     return () => clearTimeout(id)
-  }, [started, pendingMoves, routeChoice, extraThrowsToUse, piecesByTeam])
+  }, [started, pendingMoves, routeChoice, extraThrowsToUse, piecesByTeam, turnActive])
 
   const undoLastMove = () => {
     if (!undoSnapshot) {
@@ -378,34 +403,54 @@ function YutGame() {
     setMessage('마지막 이동 1회를 되돌렸습니다. (던진 결과 복원 없음)')
   }
 
+  // 키보드 핸들러(중복 등록 방지)
+  const keyboardActionsRef = useRef({
+    addMoveResult: () => {},
+    undoLastMove: () => {},
+    applyMove: () => {},
+    hasRouteChoice: false,
+  })
+
+  useEffect(() => {
+    keyboardActionsRef.current = {
+      addMoveResult,
+      undoLastMove,
+      applyMove,
+      hasRouteChoice: Boolean(routeChoice),
+    }
+  }, [routeChoice, pendingMoves, pieces, currentTeam, selectedPieceId, extraFromYutMoUsed, extraThrowsToUse])
+
   useEffect(() => {
     const handle = (e) => {
       const key = e.key.toLowerCase()
+      const { addMoveResult: addMove, undoLastMove: undoMove, applyMove: doApplyMove, hasRouteChoice } =
+        keyboardActionsRef.current
+
       const found = moveDefs.find((m) => m.key === key)
       if (found) {
         e.preventDefault()
-        addMoveResult(found)
+        addMove(found)
         return
       }
       if (key === 'o') {
         e.preventDefault()
-        addMoveResult({ label: '낙', steps: 0 })
+        addMove({ label: '낙', steps: 0 })
         return
       }
       if (key === 'u') {
         e.preventDefault()
-        undoLastMove()
+        undoMove()
         return
       }
       if (key === 'enter') {
         e.preventDefault()
-        if (routeChoice) return
-        applyMove()
+        if (hasRouteChoice) return
+        doApplyMove()
       }
     }
     window.addEventListener('keydown', handle)
     return () => window.removeEventListener('keydown', handle)
-  })
+  }, [])
 
   const updateTeamName = (idx, value) => {
     setSettings((prev) => {
@@ -422,9 +467,7 @@ function YutGame() {
           <h1 className="flex items-center gap-2 text-2xl font-bold">
             <Flag className="h-6 w-6 text-emerald-300" /> 실물 윷 입력 기반 윷놀이 진행 보드
           </h1>
-          <p className="mt-2 text-sm text-slate-300">
-            단축키: 1/2/3/4/5, B(빽도), O(낙), U(Undo), Enter(이동 실행)
-          </p>
+          <p className="mt-2 text-sm text-slate-300">단축키: 1/2/3/4/5, B(빽도), O(낙), U(Undo), Enter(이동 실행)</p>
         </header>
 
         {!started ? (
@@ -526,8 +569,20 @@ function YutGame() {
 
                 {BOARD_NODES.map((pos) => (
                   <g key={pos}>
-                    <circle cx={nodeCoords[pos][0]} cy={nodeCoords[pos][1]} r="2.7" fill="#fef3c7" stroke="#a16207" />
-                    <text x={nodeCoords[pos][0]} y={nodeCoords[pos][1] + 0.9} textAnchor="middle" className="fill-slate-900 text-[2.4px] font-bold">
+                    <circle
+                      cx={nodeCoords[pos][0]}
+                      cy={nodeCoords[pos][1]}
+                      r={pos === CENTER_POS ? '3.4' : '2.7'}
+                      fill="#fef3c7"
+                      stroke="#a16207"
+                      strokeWidth={pos === CENTER_POS ? '1.2' : '1'}
+                    />
+                    <text
+                      x={nodeCoords[pos][0]}
+                      y={nodeCoords[pos][1] + 0.9}
+                      textAnchor="middle"
+                      className="fill-slate-900 text-[2.4px] font-bold"
+                    >
                       {pos}
                     </text>
                   </g>
@@ -583,7 +638,10 @@ function YutGame() {
                 </div>
 
                 <div className="mt-3 rounded-lg bg-slate-950/70 p-2 text-xs text-slate-300">
-                  대기 결과 큐: {pendingMoves.length ? pendingMoves.map((m, i) => <span key={`${m.label}-${i}`}>[{m.label}] </span>) : '없음'}
+                  대기 결과 큐:{' '}
+                  {pendingMoves.length
+                    ? pendingMoves.map((m, i) => <span key={`${m.label}-${i}`}>[{m.label}] </span>)
+                    : '없음'}
                 </div>
 
                 <div className="mt-2 grid grid-cols-2 gap-2">
@@ -648,7 +706,11 @@ function YutGame() {
                         <div className="mt-1 flex items-center gap-1">
                           <CircleOff className="h-3.5 w-3.5 text-slate-400" /> OUT ({outPieces.length})
                           {outPieces.map((p) => (
-                            <span key={p.id} className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: TEAM_COLORS[team] }} />
+                            <span
+                              key={p.id}
+                              className="inline-block h-2.5 w-2.5 rounded-full"
+                              style={{ background: TEAM_COLORS[team] }}
+                            />
                           ))}
                         </div>
                       </div>
