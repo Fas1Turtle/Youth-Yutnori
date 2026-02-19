@@ -15,36 +15,51 @@ const DIAGONAL_NODES = Array.from({ length: 8 }, (_, i) => i + 20)
 const CENTER_POS = 28
 const BOARD_NODES = [...OUTER_NODES, ...DIAGONAL_NODES, CENTER_POS]
 
+const lerpCoord = ([x1, y1], [x2, y2], t) => [Math.round(x1 + (x2 - x1) * t), Math.round(y1 + (y2 - y1) * t)]
+
+const TOP_RIGHT = [94, 14]
+const TOP_LEFT = [14, 14]
+const BOTTOM_LEFT = [14, 94]
+const BOTTOM_RIGHT = [94, 94]
+const CENTER_COORD = [50, 50]
+
 const nodeCoords = {
-  0: [94, 94],
+  0: BOTTOM_RIGHT,
   1: [94, 78],
   2: [94, 62],
   3: [94, 46],
   4: [94, 30],
-  5: [94, 14],
+  5: TOP_RIGHT,
   6: [78, 14],
   7: [62, 14],
   8: [46, 14],
   9: [30, 14],
-  10: [14, 14],
+  10: TOP_LEFT,
   11: [14, 30],
   12: [14, 46],
   13: [14, 62],
   14: [14, 78],
-  15: [14, 94],
+  15: BOTTOM_LEFT,
   16: [30, 94],
   17: [46, 94],
   18: [62, 94],
   19: [78, 94],
-  20: [82, 26],
-  21: [70, 38],
-  22: [38, 70],
-  23: [26, 82],
-  24: [26, 26],
-  25: [38, 38],
-  26: [70, 70],
-  27: [82, 82],
-  28: [50, 50],
+  20: lerpCoord(TOP_RIGHT, CENTER_COORD, 1 / 3),
+  21: lerpCoord(TOP_RIGHT, CENTER_COORD, 2 / 3),
+  22: lerpCoord(CENTER_COORD, BOTTOM_LEFT, 1 / 3),
+  23: lerpCoord(CENTER_COORD, BOTTOM_LEFT, 2 / 3),
+  24: lerpCoord(TOP_LEFT, CENTER_COORD, 1 / 3),
+  25: lerpCoord(TOP_LEFT, CENTER_COORD, 2 / 3),
+  26: lerpCoord(CENTER_COORD, BOTTOM_RIGHT, 1 / 3),
+  27: lerpCoord(CENTER_COORD, BOTTOM_RIGHT, 2 / 3),
+  28: CENTER_COORD,
+}
+
+const NODE_BADGES = {
+  0: { label: '참먹이', r: 4.9 },
+  5: { label: '모', r: 3.8 },
+  10: { label: '뒷모', r: 3.8 },
+  28: { label: '방', r: 4.4 },
 }
 
 const outerLines = OUTER_NODES.map((p) => [p, p === 19 ? 0 : p + 1])
@@ -107,6 +122,22 @@ function YutGame() {
   const piecesByTeam = useMemo(() => {
     return Array.from({ length: settings.numTeams }, (_, team) => pieces.filter((p) => p.team === team))
   }, [pieces, settings.numTeams])
+
+  const boardStacks = useMemo(() => {
+    const map = new Map()
+    pieces
+      .filter((p) => p.pos >= 0 && p.pos !== OUT_POS)
+      .forEach((p) => {
+        const key = `${p.pos}`
+        if (!map.has(key)) map.set(key, [])
+        map.get(key).push(p)
+      })
+
+    map.forEach((stack) => {
+      stack.sort((a, b) => (a.team === b.team ? a.idx - b.idx : a.team - b.team))
+    })
+    return map
+  }, [pieces])
 
   const countAtPos = (team, pos) => pieces.filter((p) => p.team === team && p.pos === pos).length
 
@@ -460,6 +491,8 @@ function YutGame() {
     })
   }
 
+  const canSelectBoardPiece = (piece) => piece.team === currentTeam && piece.pos >= 0 && piece.pos !== OUT_POS
+
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-6 text-slate-100 sm:px-6">
       <div className="mx-auto max-w-7xl space-y-4">
@@ -552,63 +585,132 @@ function YutGame() {
             </div>
           </section>
         ) : (
-          <section className="grid gap-4 lg:grid-cols-[1.2fr,1fr]">
+          <section className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.25fr),minmax(320px,1fr)]">
             <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-3">
-              <svg viewBox="0 0 108 108" className="mx-auto w-full max-w-[720px] rounded-xl bg-amber-950/30 p-3">
-                {[...outerLines, ...diagonalLines].map(([a, b], idx) => (
-                  <line
-                    key={`${a}-${b}-${idx}`}
-                    x1={nodeCoords[a][0]}
-                    y1={nodeCoords[a][1]}
-                    x2={nodeCoords[b][0]}
-                    y2={nodeCoords[b][1]}
-                    stroke="#a16207"
-                    strokeWidth="1.4"
-                  />
-                ))}
+              <div className="mx-auto aspect-square w-full max-w-[720px]">
+                <svg viewBox="0 0 108 108" className="h-full w-full rounded-xl bg-[#2d2215] p-3 shadow-2xl shadow-amber-950/50">
+                  <defs>
+                    <linearGradient id="boardBase" x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0%" stopColor="#5b4128" />
+                      <stop offset="100%" stopColor="#3f2d1d" />
+                    </linearGradient>
+                    <linearGradient id="boardGlow" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#fef3c7" stopOpacity="0.1" />
+                      <stop offset="100%" stopColor="#000" stopOpacity="0" />
+                    </linearGradient>
+                    <pattern id="grain" width="6" height="6" patternUnits="userSpaceOnUse">
+                      <path d="M0 6 L6 0" stroke="#f59e0b" strokeOpacity="0.08" strokeWidth="0.4" />
+                    </pattern>
+                  </defs>
 
-                {BOARD_NODES.map((pos) => (
-                  <g key={pos}>
-                    <circle
-                      cx={nodeCoords[pos][0]}
-                      cy={nodeCoords[pos][1]}
-                      r={pos === CENTER_POS ? '3.4' : '2.7'}
-                      fill="#fef3c7"
-                      stroke="#a16207"
-                      strokeWidth={pos === CENTER_POS ? '1.2' : '1'}
+                  <rect x="8" y="8" width="92" height="92" rx="4.5" fill="url(#boardBase)" />
+                  <rect x="8" y="8" width="92" height="92" rx="4.5" fill="url(#grain)" />
+                  <rect x="8" y="8" width="92" height="92" rx="4.5" fill="url(#boardGlow)" />
+
+                  {outerLines.map(([a, b], idx) => (
+                    <line
+                      key={`o-${a}-${b}-${idx}`}
+                      x1={nodeCoords[a][0]}
+                      y1={nodeCoords[a][1]}
+                      x2={nodeCoords[b][0]}
+                      y2={nodeCoords[b][1]}
+                      stroke="#78350f"
+                      strokeWidth="1.9"
+                      strokeLinecap="round"
                     />
-                    <text
-                      x={nodeCoords[pos][0]}
-                      y={nodeCoords[pos][1] + 0.9}
-                      textAnchor="middle"
-                      className="fill-slate-900 text-[2.4px] font-bold"
-                    >
-                      {pos}
-                    </text>
-                  </g>
-                ))}
+                  ))}
 
-                {pieces
-                  .filter((p) => p.pos >= 0 && p.pos !== OUT_POS)
-                  .map((p, idx) => {
-                    const [x, y] = nodeCoords[p.pos]
-                    const offset = ((idx % 4) - 1.5) * 1.8
+                  {diagonalLines.map(([a, b], idx) => (
+                    <line
+                      key={`d-${a}-${b}-${idx}`}
+                      x1={nodeCoords[a][0]}
+                      y1={nodeCoords[a][1]}
+                      x2={nodeCoords[b][0]}
+                      y2={nodeCoords[b][1]}
+                      stroke="#78350f"
+                      strokeWidth="1.3"
+                      strokeLinecap="round"
+                    />
+                  ))}
+
+                  {BOARD_NODES.map((pos) => {
+                    const [x, y] = nodeCoords[pos]
+                    const badge = NODE_BADGES[pos]
+                    const baseRadius = badge?.r ?? 2.6
                     return (
-                      <circle
-                        key={p.id}
-                        cx={x + offset}
-                        cy={y + (idx % 2 ? 1.3 : -1.3)}
-                        r="1.7"
-                        fill={TEAM_COLORS[p.team]}
-                        stroke={selectedPieceId === p.id ? '#fff' : '#0f172a'}
-                        strokeWidth={selectedPieceId === p.id ? '0.7' : '0.3'}
-                      />
+                      <g key={pos}>
+                        {badge && (
+                          <circle cx={x} cy={y} r={baseRadius + 1.4} fill="none" stroke="#fde68a" strokeOpacity="0.7" strokeWidth="0.8" />
+                        )}
+                        <circle
+                          cx={x}
+                          cy={y}
+                          r={baseRadius}
+                          fill="#fffbeb"
+                          stroke="#7c2d12"
+                          strokeWidth={badge ? '1.3' : '1'}
+                        />
+                        <circle cx={x - 0.5} cy={y - 0.8} r={baseRadius * 0.45} fill="#ffffff" fillOpacity="0.36" />
+                        {badge && (
+                          <text
+                            x={x}
+                            y={y - (pos === 0 ? 6.8 : 5.8)}
+                            textAnchor="middle"
+                            className="fill-amber-100 text-[3px] font-semibold tracking-tight"
+                          >
+                            {badge.label}
+                          </text>
+                        )}
+                      </g>
                     )
                   })}
-              </svg>
+
+                  {Array.from(boardStacks.entries()).flatMap(([posKey, stack]) => {
+                    const [x, y] = nodeCoords[Number(posKey)]
+                    const count = stack.length
+                    return stack.map((p, idx) => {
+                      const spread = count > 1 ? idx - (count - 1) / 2 : 0
+                      const px = x + spread * 1.9
+                      const py = y + (Math.abs(spread) % 2 === 0 ? -0.7 : 0.7)
+                      const selected = selectedPieceId === p.id
+                      const selectable = canSelectBoardPiece(p)
+
+                      return (
+                        <g
+                          key={p.id}
+                          onClick={() => selectable && setSelectedPieceId(p.id)}
+                          className={selectable ? 'cursor-pointer' : ''}
+                        >
+                          {selectable && (
+                            <circle
+                              cx={px}
+                              cy={py}
+                              r="2.95"
+                              fill="none"
+                              stroke="#ffffff"
+                              strokeWidth="0.4"
+                              opacity="0"
+                              className="transition-opacity duration-200 hover:opacity-70"
+                            />
+                          )}
+                          <circle
+                            cx={px}
+                            cy={py}
+                            r="2.2"
+                            fill={TEAM_COLORS[p.team]}
+                            stroke={selected ? '#ffffff' : '#111827'}
+                            strokeWidth={selected ? '0.9' : '0.55'}
+                          />
+                          <circle cx={px - 0.55} cy={py - 0.7} r="0.72" fill="#fff" fillOpacity="0.35" />
+                        </g>
+                      )
+                    })
+                  })}
+                </svg>
+              </div>
             </div>
 
-            <div className="space-y-3">
+            <div className="max-h-[75vh] space-y-3 overflow-y-auto pr-1">
               <div className={`rounded-xl border border-slate-700 p-3 ${TEAM_BG[currentTeam]}`}>
                 <p className="text-sm text-slate-300">현재 팀</p>
                 <p className={`text-xl font-bold ${TEAM_TEXT[currentTeam]}`}>{activeTeamName}</p>
