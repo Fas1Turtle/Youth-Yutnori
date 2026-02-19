@@ -12,7 +12,7 @@ const TEAM_TEXT = ['text-rose-300', 'text-blue-300', 'text-green-300', 'text-amb
 const OUTER_NODES = Array.from({ length: 20 }, (_, i) => i)
 const DIAGONAL_NODES = Array.from({ length: 8 }, (_, i) => i + 20)
 const CENTER_POS = 28
-const BOARD_NODES = [...OUTER_NODES, ...DIAGONAL_NODES]
+const BOARD_NODES = [...OUTER_NODES, ...DIAGONAL_NODES, CENTER_POS]
 
 const nodeCoords = {
   0: [94, 94],
@@ -92,6 +92,7 @@ function YutGame() {
   const [message, setMessage] = useState('게임을 시작하세요.')
   const [routeChoice, setRouteChoice] = useState(null)
   const [undoSnapshot, setUndoSnapshot] = useState(null)
+  const [turnActive, setTurnActive] = useState(false)
 
   const yutMoLimit = settings.mode === 'basic' ? 1 : 3
 
@@ -126,6 +127,7 @@ function YutGame() {
     setMessage('실물 윷을 던지고 결과를 입력하세요.')
     setRouteChoice(null)
     setUndoSnapshot(null)
+    setTurnActive(false)
     setStarted(true)
   }
 
@@ -166,6 +168,7 @@ function YutGame() {
         setExtraCaptureAvailable(0)
         setExtraThrowsToUse(0)
         setUndoSnapshot(null)
+        setTurnActive(false)
         setMessage(`${settings.teamNames[team]} 차례입니다. 결과를 입력하세요.`)
         return
       }
@@ -265,6 +268,7 @@ function YutGame() {
       setUndoSnapshot(snapshot)
       setPieces(nextPieces)
       setPendingMoves((prev) => prev.slice(1))
+      setTurnActive(true)
 
       if (didCapture) {
         setExtraCaptureAvailable((v) => v + 1)
@@ -345,6 +349,7 @@ function YutGame() {
     setPieces(nextPieces)
     setPendingMoves((prev) => prev.slice(1))
     setRouteChoice(null)
+    setTurnActive(true)
 
     if (didCapture) {
       setExtraCaptureAvailable((v) => v + 1)
@@ -372,11 +377,14 @@ function YutGame() {
       return
     }
 
+    if (!turnActive) return
+
     const id = setTimeout(() => {
       moveToNextTeam()
+      setTurnActive(false)
     }, 120)
     return () => clearTimeout(id)
-  }, [started, pendingMoves, routeChoice, extraThrowsToUse, piecesByTeam])
+  }, [started, pendingMoves, routeChoice, extraThrowsToUse, piecesByTeam, turnActive])
 
   const undoLastMove = () => {
     if (!undoSnapshot) {
